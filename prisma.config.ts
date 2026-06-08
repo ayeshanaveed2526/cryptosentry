@@ -9,6 +9,7 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // For Prisma CLI operations (db push / migrate), use the session pooler DIRECT_URL
+    url: process.env["DIRECT_URL"] || process.env["DATABASE_URL"],
   },
 });
