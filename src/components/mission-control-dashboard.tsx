@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface CoinPrice {
   id: string;
@@ -35,13 +36,21 @@ export default function MissionControlDashboard({ user }: MissionControlDashboar
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [engineStatus, setEngineStatus] = useState<any>(null);
-
+  
   // Console logs & Terminal
   const [logs, setLogs] = useState<ConsoleLog[]>([]);
   const consoleEndRef = useRef<HTMLDivElement>(null);
 
   // Tutorial state
   const [tutorialStep, setTutorialStep] = useState<number | null>(null);
+  const [highlightRect, setHighlightRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number; placement: 'top' | 'bottom' }>({ top: 0, left: 0, placement: 'bottom' });
+
+  // Refs for interactive tutorial highlighting
+  const headerRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const logFeedRef = useRef<HTMLDivElement>(null);
+  const watchlistLinkRef = useRef<HTMLAnchorElement>(null);
 
   // Helper to add logs to the Sentry console
   const addLog = (type: "info" | "warn" | "error" | "success", message: string) => {
@@ -65,7 +74,7 @@ export default function MissionControlDashboard({ user }: MissionControlDashboar
             setWatchlist(parsed);
             return parsed;
           }
-        } catch { }
+        } catch {}
       }
       // Initialize defaults
       const defaults = ["bitcoin", "ethereum", "solana"];
@@ -82,7 +91,7 @@ export default function MissionControlDashboard({ user }: MissionControlDashboar
       const res = await fetch(`http://localhost:3001/api/prices?_t=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) throw new Error("Surveillance engine offline");
       const json = await res.json();
-
+      
       if (json.success) {
         const data: CoinPrice[] = json.data;
         setPrices(data);
@@ -92,14 +101,15 @@ export default function MissionControlDashboard({ user }: MissionControlDashboar
         data.forEach(coin => {
           if (activeWatchlist.includes(coin.id)) {
             if (coin.alertStatus === "alert") {
-              addLog("error", `ALERT: Sudden flash crash detected on ${coin.name}! Price dropped below threshold.`);
+              const formattedDate = new Date().toISOString().split('T')[0];
+              addLog("error", `[${formattedDate}] ALERT: Sudden flash crash detected on ${coin.name}!`);
             }
           }
         });
       }
     } catch (err: any) {
       setError("Surveillance engine is unreachable. Running local sub-simulation.");
-
+      
       // Local simulation walk for offline state
       setPrices((prev) => {
         const base: CoinPrice[] = prev.length > 0 ? prev : [
@@ -123,7 +133,8 @@ export default function MissionControlDashboard({ user }: MissionControlDashboar
           const isAlert = isCrash || (drift <= -0.02);
 
           if (isAlert) {
-            addLog("error", `ALERT (SIMULATED): Flash crash detected on ${coin.name}! Drop: ${(drift * 100).toFixed(2)}%`);
+            const formattedDate = new Date().toISOString().split('T')[0];
+            addLog("error", `[${formattedDate}] ALERT (SIMULATED): Flash crash detected on ${coin.name}! Drop: ${(drift * 100).toFixed(2)}%`);
           }
 
           return {
@@ -159,7 +170,7 @@ export default function MissionControlDashboard({ user }: MissionControlDashboar
     const activeWL = loadWatchlist();
     addLog("info", "CRYPTOSENTRY COMMAND HUDS INITIALIZING...");
     addLog("info", `LOADED WATCHLIST: Monitoring ${activeWL.join(", ")}`);
-
+    
     fetchPrices(activeWL);
     fetchHealth();
 
@@ -183,6 +194,64 @@ export default function MissionControlDashboard({ user }: MissionControlDashboar
       clearInterval(healthInterval);
     };
   }, []);
+
+  // Recalculate Highlight overlay position when step changes
+  const updateTutorialHighlight = () => {
+    if (tutorialStep === null) {
+      setHighlightRect(null);
+      return;
+    }
+
+    let targetEl: HTMLElement | null = null;
+    if (tutorialStep === 1) targetEl = headerRef.current;
+    if (tutorialStep === 2) targetEl = gridRef.current;
+    if (tutorialStep === 3) targetEl = logFeedRef.current;
+    if (tutorialStep === 4) targetEl = watchlistLinkRef.current;
+
+    if (targetEl) {
+      const rect = targetEl.getBoundingClientRect();
+      const top = rect.top + window.scrollY;
+      const left = rect.left + window.scrollX;
+      setHighlightRect({
+        top,
+        left,
+        width: rect.width,
+        height: rect.height
+      });
+
+      // Calculate tooltip position
+      let tooltipTop = top + rect.height + 16;
+      let tooltipLeft = left + (rect.width - 360) / 2; // center tooltip
+      let placement: 'top' | 'bottom' = 'bottom';
+
+      // Keep tooltip inside screen boundary
+      if (tooltipLeft < 16) {
+        tooltipLeft = 16;
+      } else if (tooltipLeft + 360 > window.innerWidth - 16) {
+        tooltipLeft = window.innerWidth - 376;
+      }
+
+      // If tooltip goes off bottom, place it above target
+      if (tooltipTop + 220 > window.scrollY + window.innerHeight) {
+        tooltipTop = top - 230;
+        placement = 'top';
+      }
+
+      setTooltipPos({ top: tooltipTop, left: tooltipLeft, placement });
+    }
+  };
+
+  useEffect(() => {
+    updateTutorialHighlight();
+    
+    // Listen to resize and scroll to keep alignment
+    window.addEventListener('resize', updateTutorialHighlight);
+    window.addEventListener('scroll', updateTutorialHighlight);
+    return () => {
+      window.removeEventListener('resize', updateTutorialHighlight);
+      window.removeEventListener('scroll', updateTutorialHighlight);
+    };
+  }, [tutorialStep]);
 
   // Scroll terminal to bottom
   useEffect(() => {
@@ -229,72 +298,122 @@ export default function MissionControlDashboard({ user }: MissionControlDashboar
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(99,102,241,0.08),rgba(255,255,255,0))] -z-10 pointer-events-none" />
       <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent animate-pulse pointer-events-none" />
 
-      {/* Onboarding Tutorial HUD Overlay */}
-      {tutorialStep !== null && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn">
-          <div className="bg-slate-900 border-2 border-cyan-500 shadow-[0_0_25px_rgba(6,182,212,0.3)] max-w-lg w-full rounded-2xl overflow-hidden p-6 relative">
-            <div className="absolute top-0 right-0 p-2 text-xs font-mono text-cyan-500/50">
-              HUD GUIDE v1.0
-            </div>
+      {/* Onboarding Interactive Tutorial Overlay */}
+      <AnimatePresence>
+        {tutorialStep !== null && (
+          <>
+            {/* Dark Backdrop Overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={skipTutorial}
+              className="fixed inset-0 bg-slate-950/70 backdrop-blur-[2px] z-40 cursor-pointer"
+            />
+            
+            {/* Element Highlighter Glow */}
+            {highlightRect && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ 
+                  opacity: 1,
+                  scale: 1,
+                  x: highlightRect.left - 4,
+                  y: highlightRect.top - 4,
+                  width: highlightRect.width + 8,
+                  height: highlightRect.height + 8
+                }}
+                transition={{ type: "spring", stiffness: 350, damping: 35 }}
+                exit={{ opacity: 0 }}
+                style={{ position: 'absolute', top: 0, left: 0 }}
+                className="pointer-events-none rounded-2xl border-2 border-cyan-400 shadow-[0_0_25px_rgba(34,211,238,0.5)] z-[45]"
+              />
+            )}
 
-            <div className="flex items-center gap-3 mb-4">
-              <div className="h-10 w-10 rounded-xl bg-cyan-950 border border-cyan-500 flex items-center justify-center font-bold text-cyan-400">
-                0{tutorialStep}
+            {/* Floating Tutorial HUD Tooltip */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 10 }}
+              animate={{ 
+                opacity: 1, 
+                scale: 1, 
+                x: tooltipPos.left,
+                y: tooltipPos.top
+              }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              style={{ position: 'absolute', top: 0, left: 0 }}
+              className="bg-slate-900 border border-slate-800 shadow-[0_4px_30px_rgba(0,0,0,0.5)] max-w-[360px] w-full rounded-2xl p-5 z-50 flex flex-col gap-4"
+            >
+              <div className="flex items-center justify-between">
+                <span className="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-500/30 text-[9px] font-mono font-bold text-cyan-400">
+                  SYSTEM HUD stage 0{tutorialStep}/04
+                </span>
+                <button 
+                  onClick={skipTutorial}
+                  className="text-[10px] text-slate-500 hover:text-slate-300 font-mono"
+                >
+                  [Exit]
+                </button>
               </div>
-              <h2 className="text-xl font-bold tracking-tight text-white font-mono uppercase">
-                {tutorialStep === 1 && "1. Sentry Guard Core"}
-                {tutorialStep === 2 && "2. Live Surveillance Cards"}
-                {tutorialStep === 3 && "3. Command Sentry Log"}
-                {tutorialStep === 4 && "4. Custom Watchlist Tuning"}
-              </h2>
-            </div>
 
-            <div className="text-slate-300 text-sm leading-relaxed mb-6 font-sans">
-              {tutorialStep === 1 && (
-                <p>
-                  Welcome to <span className="text-cyan-400 font-bold">Crypto Sentry</span>. Unlike typical market apps, this system operates a 24/7 background guard loop that queries price data every <span className="text-indigo-400 font-semibold">30 seconds</span> to detect high-speed drops and crash deviations.
-                </p>
-              )}
-              {tutorialStep === 2 && (
-                <p>
-                  Under <span className="text-cyan-400 font-bold">Live Surveillance Targets</span>, you'll see glowing status cards. When a crash is detected, the card flashes <span className="text-rose-500 font-semibold">Neon Red</span> and raises an alert. Otherwise, the status badge remains a healthy <span className="text-emerald-500 font-semibold">Green (Normal)</span>.
-                </p>
-              )}
-              {tutorialStep === 3 && (
-                <p>
-                  The <span className="text-cyan-400 font-bold">Live Operation Command Console</span> trace-logs every background scheduler query, health diagnostic, and rate-limit warning. Any triggered alert is immediately highlighted in bright red.
-                </p>
-              )}
-              {tutorialStep === 4 && (
-                <p>
-                  To optimize memory and watch specific targets, navigate to the <span className="text-cyan-400 font-bold">Watchlist Tab</span>. There, you can toggle all 8 major assets on or off. Only watchlisted assets are actively analyzed and displayed on this dashboard.
-                </p>
-              )}
-            </div>
+              <div className="space-y-1">
+                <h2 className="text-sm font-bold tracking-tight text-white font-mono uppercase">
+                  {tutorialStep === 1 && "1. Sentry Guard HUD"}
+                  {tutorialStep === 2 && "2. Live Surveillance Targets"}
+                  {tutorialStep === 3 && "3. Command Sentry Log"}
+                  {tutorialStep === 4 && "4. Custom Watchlist Tuning"}
+                </h2>
+                <div className="text-slate-300 text-xs leading-relaxed font-sans">
+                  {tutorialStep === 1 && (
+                    <p>
+                      Welcome to <span className="text-cyan-400 font-bold">Crypto Sentry</span>. This dashboard provides 24/7 continuous threat monitoring. The engine polls price metrics every <span className="text-indigo-400 font-semibold">30 seconds</span> to detect rapid crash deviations.
+                    </p>
+                  )}
+                  {tutorialStep === 2 && (
+                    <p>
+                      The surveillance targets show real-time stats. If an asset drops <span className="text-rose-400 font-bold">2% or more</span> in 30 seconds, it flashes <span className="text-rose-500 font-bold">Red (Alert Active)</span>. Otherwise, it remains a healthy <span className="text-emerald-400">Green (Normal)</span>.
+                    </p>
+                  )}
+                  {tutorialStep === 3 && (
+                    <p>
+                      The live operation command feed trace-logs every background check. Flash crash alerts and rate-limit warnings are logged immediately in bright glowing red.
+                    </p>
+                  )}
+                  {tutorialStep === 4 && (
+                    <p>
+                      Clicking this link takes you to the Watchlist tab. You can toggle which of the 8 major assets are monitored by Sentry Guards to optimize resource usage.
+                    </p>
+                  )}
+                </div>
+              </div>
 
-            <div className="flex items-center justify-between border-t border-slate-800 pt-4">
-              <button
-                onClick={skipTutorial}
-                className="text-xs text-slate-500 hover:text-slate-300 transition uppercase font-semibold font-mono"
-              >
-                Skip HUD Onboarding
-              </button>
-
-              <button
-                onClick={nextTutorial}
-                className="px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white text-xs font-semibold rounded-lg shadow-md hover:shadow-[0_0_15px_rgba(6,182,212,0.4)] transition duration-200 uppercase font-mono"
-              >
-                {tutorialStep < 4 ? "Next HUD Stage →" : "Authorize Guard Loop"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="flex items-center justify-between border-t border-slate-800 pt-3 mt-1">
+                <button
+                  onClick={skipTutorial}
+                  className="text-[10px] text-slate-500 hover:text-slate-300 transition uppercase font-semibold font-mono"
+                >
+                  Skip
+                </button>
+                
+                <button
+                  onClick={nextTutorial}
+                  className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white text-[10px] font-semibold rounded-lg shadow-md hover:shadow-[0_0_10px_rgba(6,182,212,0.4)] transition duration-150 uppercase font-mono"
+                >
+                  {tutorialStep < 4 ? "Next stage →" : "Activate guards"}
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Main Command HUD Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900/40 p-6 rounded-3xl border border-slate-800 backdrop-blur-xl shadow-lg relative overflow-hidden">
+      <div 
+        ref={headerRef} 
+        className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900/40 p-6 rounded-3xl border border-slate-800 backdrop-blur-xl shadow-lg relative overflow-hidden"
+      >
         <div className="absolute -left-16 -top-16 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-
+        
         <div className="space-y-1 z-10">
           <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-cyan-950/50 border border-cyan-500/30 text-[10px] font-semibold text-cyan-400 uppercase tracking-widest font-mono">
             🛰️ SENTRY HUB OPERATIONAL
@@ -314,8 +433,9 @@ export default function MissionControlDashboard({ user }: MissionControlDashboar
           >
             <span>📖</span> Launch Tutorial
           </button>
-
+          
           <Link
+            ref={watchlistLinkRef}
             href="/watchlist"
             className="px-4 py-2 border border-slate-800 hover:border-slate-700 bg-slate-950/30 text-slate-300 hover:text-white rounded-xl transition duration-150 flex items-center gap-1.5"
           >
@@ -337,7 +457,7 @@ export default function MissionControlDashboard({ user }: MissionControlDashboar
       </div>
 
       {/* Grid of Monitored Assets */}
-      <div className="space-y-4">
+      <div ref={gridRef} className="space-y-4">
         <div className="flex justify-between items-baseline">
           <h2 className="text-xs font-semibold text-slate-400 font-mono uppercase tracking-widest">
             Surveillance Grid
@@ -377,13 +497,13 @@ export default function MissionControlDashboard({ user }: MissionControlDashboar
 
               // Cyberpunk color configurations
               const cardBorderClass = isAlert
-                ? "border-rose-500/70 shadow-[0_0_20px_rgba(244,63,94,0.15)] bg-rose-950/10"
+                ? "border-rose-500/70 shadow-[0_0_20px_rgba(244,63,94,0.15)] bg-rose-950/10 animate-pulse"
                 : "border-slate-800 hover:border-slate-700 bg-slate-900/40";
               const glowClass = isAlert
                 ? "bg-rose-500/10"
                 : "bg-indigo-500/5";
               const statusBadgeClass = isAlert
-                ? "bg-rose-500/20 border-rose-500/30 text-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.15)]"
+                ? "bg-rose-500/20 border-rose-500/30 text-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.15)] animate-pulse"
                 : "bg-emerald-500/20 border-emerald-500/30 text-emerald-400";
               const statusText = isAlert ? "⚠️ ALERT ACTIVE" : "🟢 NORMAL";
 
@@ -434,7 +554,10 @@ export default function MissionControlDashboard({ user }: MissionControlDashboar
       </div>
 
       {/* Sentry Command Log Terminal */}
-      <div className="bg-slate-950 border border-slate-850 rounded-2xl p-5 shadow-inner space-y-3 font-mono text-xs">
+      <div 
+        ref={logFeedRef} 
+        className="bg-slate-950 border border-slate-850 rounded-2xl p-5 shadow-inner space-y-3 font-mono text-xs"
+      >
         <div className="flex items-center justify-between border-b border-slate-900 pb-3">
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
@@ -442,7 +565,7 @@ export default function MissionControlDashboard({ user }: MissionControlDashboar
               Sentry Log Feed
             </span>
           </div>
-
+          
           <button
             onClick={() => setLogs([])}
             className="text-[10px] text-slate-500 hover:text-slate-300 transition uppercase"
