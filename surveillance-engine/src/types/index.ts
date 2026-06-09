@@ -6,6 +6,7 @@ export interface CoinPrice {
   change24h: number;
   lastUpdated: Date;
   source: 'coingecko' | 'fallback' | 'mock';
+  alertStatus: 'normal' | 'alert';
 }
 
 export interface CoinGeckoSimplePriceResponse {

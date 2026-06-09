@@ -48,7 +48,7 @@ const coinMeta: Record<string, { color: string; borderGlow: string; icon: string
   }
 };
 
-router.get('/', (req: Request, res: Response) => {
+router.get(['/', '/dashboard'], (req: Request, res: Response) => {
   const prices = priceCache.getAll();
   const status = getFetcherStatus();
 
@@ -80,10 +80,24 @@ router.get('/', (req: Request, res: Response) => {
       sourceLabel = 'Mock Data';
     }
 
+    const isAlert = coin.alertStatus === 'alert';
+    const alertBadgeClass = isAlert 
+      ? 'text-rose-400 bg-rose-500/10 border-rose-500/20' 
+      : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
+    const alertLabel = isAlert ? 'Alert Active' : 'Normal';
+    
+    const cardBorderClass = isAlert 
+      ? 'border-rose-500/50 shadow-lg shadow-rose-500/10' 
+      : 'border-zinc-800/80';
+    const cardBgClass = isAlert 
+      ? 'bg-rose-950/20' 
+      : 'bg-zinc-900/60';
+    const glowColor = isAlert ? '#ef4444' : meta.color;
+
     return `
-      <div id="card-${coin.id}" class="relative overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-900/60 p-6 backdrop-blur-xl transition-all duration-300 ${meta.borderGlow}">
+      <div id="card-${coin.id}" class="relative overflow-hidden rounded-2xl border p-6 backdrop-blur-xl transition-all duration-300 ${cardBorderClass} ${cardBgClass} ${isAlert ? '' : meta.borderGlow}">
         <!-- Dynamic Gradient Glow -->
-        <div class="absolute -right-16 -top-16 -z-10 h-32 w-32 rounded-full opacity-10 blur-3xl transition-opacity duration-300" style="background-color: ${meta.color}"></div>
+        <div id="glow-${coin.id}" class="absolute -right-16 -top-16 -z-10 h-32 w-32 rounded-full opacity-10 blur-3xl transition-opacity duration-300" style="background-color: ${glowColor}"></div>
         
         <div class="flex items-center justify-between mb-4">
           <div class="flex items-center gap-3">
@@ -92,7 +106,12 @@ router.get('/', (req: Request, res: Response) => {
             </div>
             <div>
               <h3 class="font-semibold text-zinc-100">${coin.name}</h3>
-              <span class="text-xs uppercase text-zinc-400 font-mono tracking-wider">${coin.symbol}</span>
+              <div class="flex items-center gap-2">
+                <span class="text-xs uppercase text-zinc-400 font-mono tracking-wider">${coin.symbol}</span>
+                <span id="alert-badge-${coin.id}" class="px-1.5 py-0.2 rounded text-[10px] font-bold border ${alertBadgeClass}">
+                  ${alertLabel}
+                </span>
+              </div>
             </div>
           </div>
           <span class="px-2.5 py-0.5 rounded-full text-xs font-medium border ${sourceBadgeClass}">
@@ -286,12 +305,26 @@ router.get('/', (req: Request, res: Response) => {
       }).format(num);
     }
 
+    const coinMetaBranding = {
+      bitcoin: { color: '#F7931A', borderGlow: 'hover:border-amber-500/50 hover:shadow-amber-500/10' },
+      ethereum: { color: '#627EEA', borderGlow: 'hover:border-indigo-500/50 hover:shadow-indigo-500/10' },
+      solana: { color: '#14F195', borderGlow: 'hover:border-teal-500/50 hover:shadow-teal-500/10' },
+      binancecoin: { color: '#F3BA2F', borderGlow: 'hover:border-yellow-500/50 hover:shadow-yellow-500/10' },
+      ripple: { color: '#23292F', borderGlow: 'hover:border-blue-400/50 hover:shadow-blue-400/10' },
+      cardano: { color: '#0033AD', borderGlow: 'hover:border-blue-600/50 hover:shadow-blue-600/10' },
+      dogecoin: { color: '#BA9F33', borderGlow: 'hover:border-amber-600/50 hover:shadow-amber-600/10' },
+      'polygon-ecosystem-token': { color: '#8247E5', borderGlow: 'hover:border-purple-500/50 hover:shadow-purple-500/10' }
+    };
+
     // Refresh UI with new price data
     function updatePricesUI(prices) {
       prices.forEach(coin => {
         const priceEl = document.getElementById('price-' + coin.id);
         const changeEl = document.getElementById('change-' + coin.id);
         const updatedEl = document.getElementById('updated-' + coin.id);
+        const alertBadgeEl = document.getElementById('alert-badge-' + coin.id);
+        const glowEl = document.getElementById('glow-' + coin.id);
+        const cardEl = document.getElementById('card-' + coin.id);
         
         if (priceEl) {
           const digits = coin.priceUsd > 100 ? 2 : 4;
@@ -309,6 +342,30 @@ router.get('/', (req: Request, res: Response) => {
           updatedEl.textContent = new Date(coin.lastUpdated).toLocaleTimeString();
         }
 
+        // Update Alert Status elements
+        const isAlert = coin.alertStatus === 'alert';
+        if (alertBadgeEl) {
+          alertBadgeEl.textContent = isAlert ? 'Alert Active' : 'Normal';
+          alertBadgeEl.className = 'px-1.5 py-0.2 rounded text-[10px] font-bold border ' + 
+            (isAlert ? 'text-rose-400 bg-rose-500/10 border-rose-500/20' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20');
+        }
+
+        if (cardEl) {
+          const baseClasses = 'relative overflow-hidden rounded-2xl border p-6 backdrop-blur-xl transition-all duration-300 ';
+          const metaColor = coinMetaBranding[coin.id] || { borderGlow: 'hover:border-white/20', color: '#ffffff' };
+          
+          if (isAlert) {
+            cardEl.className = baseClasses + 'border-rose-500/50 shadow-lg shadow-rose-500/10 bg-rose-950/20';
+          } else {
+            cardEl.className = baseClasses + 'border-zinc-800/80 bg-zinc-900/60 ' + metaColor.borderGlow;
+          }
+        }
+
+        if (glowEl) {
+          const metaColor = coinMetaBranding[coin.id] || { color: '#ffffff' };
+          glowEl.style.backgroundColor = isAlert ? '#ef4444' : metaColor.color;
+        }
+
         // Color branding mapping
         const sourceBadges = {
           coingecko: 'text-green-400 bg-green-500/10 border-green-500/20',
@@ -323,7 +380,7 @@ router.get('/', (req: Request, res: Response) => {
         
         const card = document.getElementById('card-' + coin.id);
         if (card) {
-          const badge = card.querySelector('span.border');
+          const badge = card.querySelector('span.border:not([id^="alert-badge-"])');
           if (badge) {
             badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-medium border ' + (sourceBadges[coin.source] || '');
             badge.textContent = sourceLabels[coin.source] || 'Unknown';
@@ -335,17 +392,17 @@ router.get('/', (req: Request, res: Response) => {
     // Load data from Express API
     async function loadData() {
       try {
-        const res = await fetch('/api/prices');
+        const res = await fetch('/api/prices?_t=' + Date.now());
         const json = await res.json();
         if (json.success) {
           updatePricesUI(json.data);
         }
         
         // Fetch health
-        const healthRes = await fetch('/health');
+        const healthRes = await fetch('/health?_t=' + Date.now());
         const health = await healthRes.json();
         uptimeElement.textContent = health.uptime;
-        fetchesCount.textContent = health.fetcher.totalFetches;
+        fetchesCount.textContent = health.fetcher ? health.fetcher.totalFetches : (health.totalFetches || 0);
         
         if (health.fetcher.error) {
           errorPanel.classList.remove('hidden');

@@ -6,7 +6,7 @@ export class PriceCache {
   constructor() {
     // Initialize cache with realistic default values in case API fetch fails on start
     const now = new Date();
-    const initialCoins: Omit<CoinPrice, 'lastUpdated' | 'source'>[] = [
+    const initialCoins: Omit<CoinPrice, 'lastUpdated' | 'source' | 'alertStatus'>[] = [
       { id: 'bitcoin', name: 'Bitcoin', symbol: 'btc', priceUsd: 68500.0, change24h: 1.25 },
       { id: 'ethereum', name: 'Ethereum', symbol: 'eth', priceUsd: 3850.0, change24h: -0.45 },
       { id: 'solana', name: 'Solana', symbol: 'sol', priceUsd: 175.25, change24h: 4.82 },
@@ -22,6 +22,7 @@ export class PriceCache {
         ...coin,
         lastUpdated: now,
         source: 'mock',
+        alertStatus: 'normal',
       });
     }
   }
@@ -54,6 +55,7 @@ export class PriceCache {
         change24h: priceData.change24h ?? 0,
         lastUpdated: new Date(),
         source: priceData.source || 'coingecko',
+        alertStatus: priceData.alertStatus || 'normal',
       });
     }
   }

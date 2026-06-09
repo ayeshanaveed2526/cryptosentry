@@ -26,6 +26,16 @@ let totalFetches = 0;
 let lastSuccessfulFetchTime: Date | null = null;
 let lastManualFetchTime = 0;
 
+// Memory structures for crash detection
+export const baselinePriceMap = new Map<string, number>();
+export const lastAlertMap = new Map<string, number>();
+export const activeAlertSet = new Set<string>();
+
+// Initialize baseline prices from cache
+for (const coin of priceCache.getAll()) {
+  baselinePriceMap.set(coin.id, coin.priceUsd);
+}
+
 export async function fetchPrices(isManual = false): Promise<boolean> {
   // Prevent manual fetch spam (min 5 seconds interval)
   if (isManual) {
@@ -75,14 +85,41 @@ export async function fetchPrices(isManual = false): Promise<boolean> {
       throw new Error('Received empty response from CoinGecko API.');
     }
 
-    // Update cache
+    // Update cache and perform flash crash detection
     for (const coinId of COIN_IDS) {
       const coinData = data[coinId];
       if (coinData) {
+        const currentPrice = coinData.usd;
+        let alertStatus: 'normal' | 'alert' = 'normal';
+        
+        const baselinePrice = baselinePriceMap.get(coinId);
+        if (baselinePrice !== undefined) {
+          const percentageDrop = ((currentPrice - baselinePrice) / baselinePrice) * 100;
+          if (percentageDrop <= -2) {
+            const now = Date.now();
+            const lastAlertTime = lastAlertMap.get(coinId) || 0;
+            if (now - lastAlertTime >= 60000) {
+              console.log(`⚠️ [ALERT] FLASH CRASH DETECTED: ${coinId} dropped ${percentageDrop.toFixed(2)}% in the last 30s! (Current: $${currentPrice}, Baseline: $${baselinePrice})`);
+              lastAlertMap.set(coinId, now);
+            } else {
+              console.log(`ℹ️ [Fetcher] Flash crash detected for ${coinId} (${percentageDrop.toFixed(2)}%), but alert deduplicated.`);
+            }
+            activeAlertSet.add(coinId);
+            alertStatus = 'alert';
+          } else {
+            activeAlertSet.delete(coinId);
+            alertStatus = 'normal';
+          }
+        }
+        
+        // Update baseline price for the next cycle
+        baselinePriceMap.set(coinId, currentPrice);
+
         priceCache.set(coinId, {
-          priceUsd: coinData.usd,
+          priceUsd: currentPrice,
           change24h: coinData.usd_24h_change || 0,
-          source: 'coingecko'
+          source: 'coingecko',
+          alertStatus
         });
       } else {
         console.warn(`[Fetcher] No data returned for ${coinId}`);
@@ -113,19 +150,48 @@ function simulatePriceFluctuations() {
   const now = new Date();
   
   for (const coin of cachedCoins) {
-    // Random walk of ±0.15% to ±0.35%
-    const driftPercent = (Math.random() - 0.5) * 0.006; 
+    // 5% chance of simulating a flash crash (drops between 2.0% and 3.5%)
+    const isCrash = Math.random() < 0.05;
+    const driftPercent = isCrash
+      ? -(0.02 + Math.random() * 0.015) // drop between -2.0% and -3.5%
+      : (Math.random() - 0.5) * 0.006; // random walk of ±0.3%
+      
     const newPrice = coin.priceUsd * (1 + driftPercent);
-    // Slowly drift change24h
     const changeDrift = (Math.random() - 0.5) * 0.15;
     const newChange = coin.change24h + changeDrift;
+    
+    let alertStatus: 'normal' | 'alert' = 'normal';
+    
+    const baselinePrice = baselinePriceMap.get(coin.id);
+    if (baselinePrice !== undefined) {
+      const percentageDrop = ((newPrice - baselinePrice) / baselinePrice) * 100;
+      if (percentageDrop <= -2) {
+        const currentTime = Date.now();
+        const lastAlertTime = lastAlertMap.get(coin.id) || 0;
+        if (currentTime - lastAlertTime >= 60000) {
+          console.log(`⚠️ [ALERT] FLASH CRASH DETECTED (SIMULATED): ${coin.name} dropped ${percentageDrop.toFixed(2)}% in the last 30s! (Current: $${newPrice.toFixed(4)}, Baseline: $${baselinePrice.toFixed(4)})`);
+          lastAlertMap.set(coin.id, currentTime);
+        } else {
+          console.log(`ℹ️ [Fetcher] Flash crash detected (simulated) for ${coin.name} (${percentageDrop.toFixed(2)}%), but alert deduplicated.`);
+        }
+        activeAlertSet.add(coin.id);
+        alertStatus = 'alert';
+      } else {
+        activeAlertSet.delete(coin.id);
+        alertStatus = 'normal';
+      }
+    }
+    
+    // Update baseline price for next cycle
+    baselinePriceMap.set(coin.id, newPrice);
     
     // Set in cache
     priceCache.set(coin.id, {
       priceUsd: parseFloat(newPrice.toFixed(coin.priceUsd > 100 ? 2 : 4)),
       change24h: parseFloat(Math.max(-99.9, Math.min(999.9, newChange)).toFixed(2)),
       source: coin.source === 'coingecko' ? 'fallback' : 'mock',
-      lastUpdated: now
+      lastUpdated: now,
+      alertStatus
     });
   }
 }
