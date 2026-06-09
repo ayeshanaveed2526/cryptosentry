@@ -404,7 +404,7 @@ router.get(['/', '/dashboard'], (req: Request, res: Response) => {
         uptimeElement.textContent = health.uptime;
         fetchesCount.textContent = health.fetcher ? health.fetcher.totalFetches : (health.totalFetches || 0);
         
-        if (health.fetcher.error) {
+        if (health.fetcher && health.fetcher.error) {
           errorPanel.classList.remove('hidden');
           errorMessage.textContent = health.fetcher.error;
         } else {

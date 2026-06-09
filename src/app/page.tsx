@@ -24,6 +24,12 @@ export default async function Home() {
                 <span className="text-sm text-slate-400 hidden sm:inline">
                   Welcome, <span className="font-semibold text-slate-200">{session.user?.name || session.user?.email}</span>
                 </span>
+                <Link
+                  href="/dashboard"
+                  className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition"
+                >
+                  Dashboard
+                </Link>
                 <form
                   action={async () => {
                     "use server";
@@ -68,6 +74,14 @@ export default async function Home() {
               <div>
                 <h2 className="text-xl sm:text-2xl font-bold">Welcome back, {session.user?.name}!</h2>
                 <p className="text-slate-400 text-sm mt-1">Here is the latest data for your crypto portfolio.</p>
+                <div className="mt-4">
+                  <Link
+                    href="/dashboard"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl shadow-md transition duration-200"
+                  >
+                    🚀 Enter Mission Control Dashboard
+                  </Link>
+                </div>
               </div>
               <div className="bg-slate-900/80 px-4 py-2 border border-slate-800 rounded-xl text-xs space-y-1">
                 <div className="text-slate-500 font-semibold uppercase tracking-wider">Session Profile</div>

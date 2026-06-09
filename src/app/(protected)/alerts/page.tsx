@@ -1,3 +1,5 @@
+"use client";
+
 export default function AlertsPage() {
   const activeAlerts = [
     { id: 1, token: "Bitcoin (BTC)", condition: "Goes Above", value: "$70,000.00", status: "Active", isPassed: false },
@@ -62,7 +64,7 @@ export default function AlertsPage() {
         {/* Create Form Mock */}
         <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-6 h-fit space-y-6">
           <h3 className="text-lg font-bold">Create New Alert</h3>
-          <form className="space-y-4 text-sm" onSubmit={(e) => e.preventDefault()}>
+          <form className="space-y-4 text-sm">
             <div className="space-y-2">
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Select Asset</label>
               <select className="w-full px-4 py-3 bg-slate-950/50 border border-slate-800 rounded-xl focus:outline-none focus:border-indigo-500 text-slate-300">
@@ -91,7 +93,7 @@ export default function AlertsPage() {
             </div>
 
             <button
-              type="submit"
+              type="button"
               className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl shadow-lg shadow-indigo-600/20 transition duration-200 mt-2"
             >
               Create Price Alert

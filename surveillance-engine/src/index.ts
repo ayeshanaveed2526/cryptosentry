@@ -14,6 +14,9 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Silence favicon.ico 404 warnings
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 // Routes setup
 app.use('/', apiRouter);      // Mount /api/prices and /health
 app.use('/', dashboardRouter); // Mount / dashboard
