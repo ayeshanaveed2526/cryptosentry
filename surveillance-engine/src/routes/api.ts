@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { priceCache } from '../cache/priceCache.js';
-import { fetchPrices, getFetcherStatus, baselinePriceMap, lastAlertMap, activeAlertSet } from '../services/priceFetcher.js';
+import { fetchPrices, getFetcherStatus, baselinePriceMap, lastAlertMap, activeAlertSet, getNextAlertId } from '../services/priceFetcher.js';
 
 const router = Router();
 const startTime = new Date();
@@ -117,7 +117,10 @@ router.post('/api/test/crash', (req: Request, res: Response) => {
   let alertTriggered = false;
   
   if (now - lastAlertTime >= 60000) {
-    console.log(`⚠️ [ALERT] FLASH CRASH DETECTED (MANUAL TEST): ${coin.name} dropped ${percentageDrop.toFixed(2)}%! (Current: $${crashedPrice.toFixed(4)}, Baseline: $${baseline.toFixed(4)})`);
+    const alertId = getNextAlertId();
+    const formattedDate = new Date().toISOString().split('T')[0];
+    const symbol = coin.symbol.toUpperCase();
+    console.log(`[${formattedDate}] ${symbol} dropped ${Math.abs(percentageDrop).toFixed(1)}% Price = $${parseFloat(crashedPrice.toFixed(coin.priceUsd > 100 ? 2 : 4)).toLocaleString()} AlertID = ${alertId}`);
     lastAlertMap.set(coin.id, now);
     alertTriggered = true;
   } else {

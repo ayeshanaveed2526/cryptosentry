@@ -31,6 +31,24 @@ export const baselinePriceMap = new Map<string, number>();
 export const lastAlertMap = new Map<string, number>();
 export const activeAlertSet = new Set<string>();
 
+let alertCounter = 0;
+export function getNextAlertId(): string {
+  alertCounter++;
+  return String(alertCounter).padStart(3, '0');
+}
+
+function getFormattedCoinSymbol(id: string): string {
+  if (id === 'bitcoin') return 'BTC';
+  if (id === 'ethereum') return 'ETH';
+  if (id === 'solana') return 'SOL';
+  if (id === 'binancecoin') return 'BNB';
+  if (id === 'ripple') return 'XRP';
+  if (id === 'cardano') return 'ADA';
+  if (id === 'dogecoin') return 'DOGE';
+  if (id === 'polygon-ecosystem-token') return 'POL';
+  return id.substring(0, 3).toUpperCase();
+}
+
 // Initialize baseline prices from cache
 for (const coin of priceCache.getAll()) {
   baselinePriceMap.set(coin.id, coin.priceUsd);
@@ -99,7 +117,10 @@ export async function fetchPrices(isManual = false): Promise<boolean> {
             const now = Date.now();
             const lastAlertTime = lastAlertMap.get(coinId) || 0;
             if (now - lastAlertTime >= 60000) {
-              console.log(`⚠️ [ALERT] FLASH CRASH DETECTED: ${coinId} dropped ${percentageDrop.toFixed(2)}% in the last 30s! (Current: $${currentPrice}, Baseline: $${baselinePrice})`);
+              const alertId = getNextAlertId();
+              const formattedDate = new Date().toISOString().split('T')[0];
+              const symbol = getFormattedCoinSymbol(coinId);
+              console.log(`[${formattedDate}] ${symbol} dropped ${Math.abs(percentageDrop).toFixed(1)}% Price = $${currentPrice.toLocaleString()} AlertID = ${alertId}`);
               lastAlertMap.set(coinId, now);
             } else {
               console.log(`ℹ️ [Fetcher] Flash crash detected for ${coinId} (${percentageDrop.toFixed(2)}%), but alert deduplicated.`);
@@ -169,7 +190,10 @@ function simulatePriceFluctuations() {
         const currentTime = Date.now();
         const lastAlertTime = lastAlertMap.get(coin.id) || 0;
         if (currentTime - lastAlertTime >= 60000) {
-          console.log(`⚠️ [ALERT] FLASH CRASH DETECTED (SIMULATED): ${coin.name} dropped ${percentageDrop.toFixed(2)}% in the last 30s! (Current: $${newPrice.toFixed(4)}, Baseline: $${baselinePrice.toFixed(4)})`);
+          const alertId = getNextAlertId();
+          const formattedDate = new Date().toISOString().split('T')[0];
+          const symbol = getFormattedCoinSymbol(coin.id);
+          console.log(`[${formattedDate}] ${symbol} dropped ${Math.abs(percentageDrop).toFixed(1)}% Price = $${parseFloat(newPrice.toFixed(coin.priceUsd > 100 ? 2 : 4)).toLocaleString()} AlertID = ${alertId}`);
           lastAlertMap.set(coin.id, currentTime);
         } else {
           console.log(`ℹ️ [Fetcher] Flash crash detected (simulated) for ${coin.name} (${percentageDrop.toFixed(2)}%), but alert deduplicated.`);
